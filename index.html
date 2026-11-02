@@ -158,7 +158,7 @@ th{background:var(--chip)}
     </div>
   </header>
 
-  <p id="sample-note" class="note" hidden>This is a sample class with sample questions. Replace them in the Options tab.</p>
+  <p id="sample-note" class="note" hidden>The student names on the wheel are samples. Replace them in the Options tab.</p>
 
   <main>
     <section id="view-play" role="tabpanel" aria-labelledby="tab-play" class="play">
@@ -281,12 +281,19 @@ function css(n){return getComputedStyle(document.documentElement).getPropertyVal
 
 /* ---------- State ---------- */
 var SAMPLE_STUDENTS=['Avery','Brooks','Camila','Dev','Elena','Farid','Grace','Hiro','Imani','Jonas','Kai','Lucía'];
-var SAMPLE_QUESTIONS=[
+var OLD_SAMPLE_QUESTIONS=[
   {q:'Which planet is closest to the Sun?',answers:['Venus','Mercury','Earth','Mars'],correct:1},
   {q:'What is 7 × 8?',answers:['54','56','58','64'],correct:1},
   {q:'Which of these words is a noun?',answers:['Quickly','Bright','Table','Run'],correct:2},
   {q:'What is the capital of Australia?',answers:['Sydney','Melbourne','Canberra','Perth'],correct:2},
   {q:'At sea level, water boils at what temperature?',answers:['90°C','100°C','110°C','120°C'],correct:1}
+];
+var SAMPLE_QUESTIONS=[
+  {q:'In the last six months, more than 2 in 5 people at Stetson used Microsoft 365 Copilot Chat.',answers:['TRUE','FALSE'],correct:0},
+  {q:'Banning devices in class reliably solves student distraction.',answers:['TRUE','FALSE'],correct:1},
+  {q:'What does the "GPT" in ChatGPT stand for?',answers:['General Purpose Technology','Graphical Processing Tool','Generative Pre-trained Transformer','Guided Predictive Text'],correct:2},
+  {q:'In the 4V framework, which V gives students the most decision-making power over an assignment?',answers:['View','Voice','Vote','Veto'],correct:3},
+  {q:'What is the term for an AI model producing confident-sounding but false or fabricated information?',answers:['Overfitting','Tokenization','Fine-tuning','Prompt injection','Data drift','Hallucination'],correct:5}
 ];
 var state={students:SAMPLE_STUDENTS.slice(),questions:SAMPLE_QUESTIONS.slice(),noRepeat:false,sound:true,sample:true};
 function validQ(x){return x&&typeof x.q==='string'&&Array.isArray(x.answers)&&x.answers.length>=2&&Number.isInteger(x.correct)&&x.correct>=0&&x.correct<x.answers.length;}
@@ -303,6 +310,7 @@ try{
     }
   }
 }catch(e){}
+if(JSON.stringify(state.questions)===JSON.stringify(OLD_SAMPLE_QUESTIONS))state.questions=SAMPLE_QUESTIONS.slice();
 function save(){try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){}}
 
 var called=new Set();
@@ -818,7 +826,7 @@ function renderQuestions(){
   state.questions.forEach(function(q,i){
     var del=h('button',{type:'button',class:'btn small',text:'Delete'});
     twoStep(del,'Delete','Confirm',function(){
-      state.questions.splice(i,1);state.sample=false;usedQ.clear();
+      state.questions.splice(i,1);usedQ.clear();
       if(editing===i)resetForm();else if(editing>i)editing--;
       save();renderQuestions();renderPanelIfIdle();updateSampleNote();
     });
@@ -862,13 +870,13 @@ $('#q-form').addEventListener('submit',function(ev){
   var item={q:q,answers:answers,correct:correct};
   if(editing>=0){state.questions[editing]=item;msg(qMsg,'Question '+(editing+1)+' saved.','ok');}
   else{state.questions.push(item);msg(qMsg,'Question added.','ok');}
-  state.sample=false;usedQ.clear();save();
+  usedQ.clear();save();
   var keepMsg=qMsg.textContent,keepCls=qMsg.className;
   resetForm(answers.length);qMsg.textContent=keepMsg;qMsg.className=keepCls;
   renderQuestions();renderPanelIfIdle();updateSampleNote();
 });
 twoStep($('#q-clear'),'Delete all questions','Click again to confirm',function(){
-  state.questions=[];state.sample=false;usedQ.clear();resetForm();save();renderQuestions();renderPanelIfIdle();updateSampleNote();
+  state.questions=[];usedQ.clear();resetForm();save();renderQuestions();renderPanelIfIdle();updateSampleNote();
 });
 
 function parseQuestions(rows){
@@ -921,7 +929,7 @@ $('#q-file').addEventListener('change',function(ev){
     }
     var append=$('#q-append').checked,before=state.questions.length;
     state.questions=append?state.questions.concat(res.questions):res.questions;
-    state.sample=false;usedQ.clear();resetForm();save();renderQuestions();renderPanelIfIdle();updateSampleNote();
+    usedQ.clear();resetForm();save();renderQuestions();renderPanelIfIdle();updateSampleNote();
     var text='Loaded '+res.questions.length+' question'+(res.questions.length===1?'':'s')+' from '+file.name+(append?' (added to '+before+' existing).':(before?' (replaced '+before+').':'.'));
     if(res.skipped.length)text+=' Skipped '+res.skipped.length+': '+res.skipped.slice(0,3).join('; ')+(res.skipped.length>3?'; and more.':'.');
     msg(el,text,res.skipped.length?'err':'ok');
