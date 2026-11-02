@@ -75,6 +75,10 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 }
 .spin:active:not(:disabled){transform:translateY(4px);box-shadow:0 2px 0 var(--accent-deep)}
 .spin:disabled{opacity:.55;cursor:not-allowed}
+.spin.exhausted:disabled{opacity:1;background:var(--chip);color:var(--muted);box-shadow:0 6px 0 var(--line)}
+.done-box{margin-top:20px;padding:16px;border-radius:12px;background:var(--chip)}
+.done-title{font-family:var(--font-display);font-weight:800;font-size:26px;line-height:1.1}
+.done-box p{margin:6px 0 0}
 .eyebrow{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
 .selected{min-height:70px}
 .sel-name{font-family:var(--font-display);font-weight:800;font-size:clamp(26px,4vw,38px);line-height:1.1;overflow-wrap:anywhere}
@@ -507,18 +511,23 @@ function draw(){
 /* ---------- Spin ---------- */
 var spinBtn=$('#spin-btn'),selName=$('#sel-name');
 function pickQuestion(){
-  var nq=state.questions.length;
-  if(!nq)return -1;
   var avail=[];
-  for(var i=0;i<nq;i++)if(!usedQ.has(i))avail.push(i);
-  if(!avail.length){usedQ.clear();for(var j=0;j<nq;j++)avail.push(j);}
+  for(var i=0;i<state.questions.length;i++)if(!usedQ.has(i))avail.push(i);
+  if(!avail.length)return -1;
   var q=avail[Math.floor(Math.random()*avail.length)];
   usedQ.add(q);
   return q;
 }
+function exhausted(){return state.questions.length>0&&usedQ.size>=state.questions.length;}
+function updateSpinState(){
+  var out=exhausted();
+  spinBtn.disabled=spinning||!state.students.length||out;
+  spinBtn.classList.toggle('exhausted',out&&!spinning);
+  spinBtn.title=out?'No new questions. Upload more in Options to keep playing.':'';
+}
 function spin(){
   var n=state.students.length;
-  if(spinning||!n)return;
+  if(spinning||!n||exhausted())return;
   if(state.sound)audio();
   var cand=[],i;
   if(state.noRepeat){
@@ -552,16 +561,16 @@ function spin(){
 }
 function finish(idx,name){
   rot=mod(rot,TAU);
-  spinning=false;spinBtn.disabled=!state.students.length;
+  spinning=false;
   if(state.students[idx]!==name)idx=state.students.indexOf(name);
-  if(idx<0){phase='idle';selName.textContent='Ready to spin';renderPanel();draw();return;}
+  if(idx<0){phase='idle';selName.textContent='Ready to spin';updateSpinState();renderPanel();draw();return;}
   winnerIdx=idx;
   if(state.noRepeat)called.add(idx);
   var q=pickQuestion();
   current={name:name,q:q,picked:-1};
   phase=q<0?'noq':'asking';
   selName.textContent=name;
-  updateRound();renderPanel();draw();ding();
+  updateSpinState();updateRound();renderPanel();draw();ding();
 }
 
 /* ---------- Question panel ---------- */
@@ -613,11 +622,20 @@ function renderPanel(){
     var ok=current.picked===q.correct;
     panelBody.append(h('div',{class:'result '+(ok?'good':'bad'),text:ok?'Correct!':'Not quite.'}));
     if(!ok)panelBody.append(h('p',{class:'muted',text:'The answer is '+String.fromCharCode(65+q.correct)+': '+q.answers[q.correct]}));
-    panelBody.append(h('div',{class:'panel-actions'},h('button',{type:'button',class:'btn primary',text:'Spin again',onclick:spin})));
-  }else{
+    if(exhausted()){
+      panelBody.append(h('div',{class:'done-box'},
+        h('div',{class:'done-title',text:'No new questions'}),
+        h('p',{class:'muted',text:'Every question has been asked once. Upload more questions in Options to keep playing.'}),
+        h('div',{class:'panel-actions'},
+          h('button',{type:'button',class:'btn primary',text:'Go to Options',onclick:function(){showTab('options');}}),
+          h('button',{type:'button',class:'btn',text:'Ask all questions again',onclick:function(){refreshAfterQuestionChange(true);}}))));
+    }else{
+      panelBody.append(h('div',{class:'panel-actions'},h('button',{type:'button',class:'btn primary',text:'Spin again',onclick:spin})));
+    }
+  }else if(usedQ.size<state.questions.length){
     panelBody.append(h('div',{class:'panel-actions'},
       h('button',{type:'button',class:'btn small',text:'Skip this question',onclick:function(){
-        var nq2=pickQuestion();current.q=nq2;renderPanel();}})));
+        var nq2=pickQuestion();if(nq2<0)return;current.q=nq2;updateSpinState();renderPanel();}})));
   }
   panelBody.append(tally());
 }
@@ -702,7 +720,7 @@ function updateSampleNote(){$('#sample-note').hidden=!state.sample;}
 function afterStudentsChange(){
   called.clear();winnerIdx=-1;
   if(!spinning){phase='idle';current=null;selName.textContent='Ready to spin';renderPanel();}
-  spinBtn.disabled=spinning||!state.students.length;
+  updateSpinState();
   canvas.setAttribute('aria-label','Wheel with '+state.students.length+' student names');
   $('#student-count').textContent=state.students.length+' student'+(state.students.length===1?'':'s')+' on the wheel';
   updateRound();updateSampleNote();draw();
@@ -828,7 +846,7 @@ function renderQuestions(){
     twoStep(del,'Delete','Confirm',function(){
       state.questions.splice(i,1);usedQ.clear();
       if(editing===i)resetForm();else if(editing>i)editing--;
-      save();renderQuestions();renderPanelIfIdle();updateSampleNote();
+      save();renderQuestions();refreshAfterQuestionChange(true);updateSampleNote();
     });
     qList.append(h('li',{class:'q-item'},
       h('span',{class:'q-num',text:String(i+1)}),
@@ -840,7 +858,14 @@ function renderQuestions(){
   });
   $('#q-count').textContent=state.questions.length+' question'+(state.questions.length===1?'':'s');
 }
-function renderPanelIfIdle(){if(phase==='idle')renderPanel();}
+function refreshAfterQuestionChange(reset){
+  if(reset){
+    usedQ.clear();
+    if(!spinning){phase='idle';current=null;winnerIdx=-1;selName.textContent='Ready to spin';draw();}
+  }
+  updateSpinState();
+  if(!spinning)renderPanel();
+}
 function startEdit(i){
   var q=state.questions[i];if(!q)return;
   editing=i;qText.value=q.q;buildAnswerRows(q.answers,q.correct);
@@ -870,13 +895,14 @@ $('#q-form').addEventListener('submit',function(ev){
   var item={q:q,answers:answers,correct:correct};
   if(editing>=0){state.questions[editing]=item;msg(qMsg,'Question '+(editing+1)+' saved.','ok');}
   else{state.questions.push(item);msg(qMsg,'Question added.','ok');}
-  usedQ.clear();save();
+  if(editing>=0)usedQ.delete(editing);
+  save();
   var keepMsg=qMsg.textContent,keepCls=qMsg.className;
   resetForm(answers.length);qMsg.textContent=keepMsg;qMsg.className=keepCls;
-  renderQuestions();renderPanelIfIdle();updateSampleNote();
+  renderQuestions();refreshAfterQuestionChange(false);updateSampleNote();
 });
 twoStep($('#q-clear'),'Delete all questions','Click again to confirm',function(){
-  state.questions=[];usedQ.clear();resetForm();save();renderQuestions();renderPanelIfIdle();updateSampleNote();
+  state.questions=[];resetForm();save();renderQuestions();refreshAfterQuestionChange(true);updateSampleNote();
 });
 
 function parseQuestions(rows){
@@ -929,7 +955,7 @@ $('#q-file').addEventListener('change',function(ev){
     }
     var append=$('#q-append').checked,before=state.questions.length;
     state.questions=append?state.questions.concat(res.questions):res.questions;
-    usedQ.clear();resetForm();save();renderQuestions();renderPanelIfIdle();updateSampleNote();
+    resetForm();save();renderQuestions();refreshAfterQuestionChange(!append);updateSampleNote();
     var text='Loaded '+res.questions.length+' question'+(res.questions.length===1?'':'s')+' from '+file.name+(append?' (added to '+before+' existing).':(before?' (replaced '+before+').':'.'));
     if(res.skipped.length)text+=' Skipped '+res.skipped.length+': '+res.skipped.slice(0,3).join('; ')+(res.skipped.length>3?'; and more.':'.');
     msg(el,text,res.skipped.length?'err':'ok');
